@@ -34,7 +34,7 @@ Validation targets are freely distributable test binaries and homebrew, not comm
 Linux (including WSL2), with a C++20 compiler:
 
 ```bash
-sudo apt install build-essential cmake ninja-build
+sudo apt install build-essential cmake ninja-build libgtest-dev
 cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug

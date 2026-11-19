@@ -31,7 +31,7 @@ jobs:
         with:
           submodules: recursive
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang libgtest-dev
       - name: Configure
         run: >
           cmake --preset ${{ matrix.preset }}

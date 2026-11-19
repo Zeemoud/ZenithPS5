@@ -1,0 +1,38 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+CMakeUserPresets.json
+compile_commands.json
+.cache/
+
+# Dependencies
+/vcpkg_installed/
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Compiled artifacts and dumps
+*.o
+*.obj
+core
+core.*
+*.dmp
+*.log
+
+# Generated at runtime
+shader_cache/
+
+# Copyrighted material: NEVER commit games, firmware or keys
+*.pkg
+*.self
+*.sprx
+/games/
+/firmware/
+/keys/
+/local/

@@ -1,0 +1,10 @@
+{
+  "name": "zenithps5",
+  "version-string": "0.0.1",
+  "dependencies": [
+    "fmt",
+    "spdlog",
+    "capstone",
+    "gtest"
+  ]
+}

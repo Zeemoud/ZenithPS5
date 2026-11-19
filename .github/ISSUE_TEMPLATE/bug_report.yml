@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a crash, incorrect behavior or regression
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do **not** attach or link copyrighted material (games, firmware, keys).
+        Use freely distributable test binaries only.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "e.g. 1a2b3c4"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - Windows
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Expected behavior vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: text
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Legal
+      options:
+        - label: I am not attaching or linking any copyrighted material.
+          required: true

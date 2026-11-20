@@ -20,8 +20,8 @@ compile_commands.json
 # Compiled artifacts and dumps
 *.o
 *.obj
-core
-core.*
+/core
+/core.*
 *.dmp
 *.log
 

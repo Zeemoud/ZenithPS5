@@ -1,0 +1,5 @@
+add_executable(zenith_platform_tests
+  test_virtual_memory.cpp)
+target_link_libraries(zenith_platform_tests PRIVATE zenith::platform GTest::gtest_main)
+zenith_set_warnings(zenith_platform_tests)
+gtest_discover_tests(zenith_platform_tests)

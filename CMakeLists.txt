@@ -35,8 +35,8 @@ endif()
 
 # Subprojects: enabled one by one as each milestone gets its first source file.
 add_subdirectory(src/common)
-# add_subdirectory(src/platform)
-# add_subdirectory(src/memory)
+add_subdirectory(src/platform)
+add_subdirectory(src/memory)
 # add_subdirectory(src/loader)
 # add_subdirectory(src/debug)
 # add_subdirectory(src/frontend/cli)

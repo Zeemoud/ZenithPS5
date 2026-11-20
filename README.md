@@ -40,7 +40,7 @@ cmake --build --preset debug
 ctest --preset debug
 ```
 
-Available presets: `debug`, `release`, `asan`. There is no runnable target yet.
+Available presets: `debug`, `release`, `asan`. The CLI is built as `build/<preset>/bin/zenith` (usage: `zenith program.elf`).
 
 ## Repository layout
 

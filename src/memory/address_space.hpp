@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #pragma once
 
+#include "common/types.hpp"
+#include "platform/virtual_memory.hpp"
+
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
-
-#include "common/types.hpp"
-#include "platform/virtual_memory.hpp"
 
 namespace zenith::memory {
 
@@ -72,4 +72,4 @@ private:
     std::map<GuestAddr, Region> regions_;
 };
 
-}  // namespace zenith::memory
+} // namespace zenith::memory

@@ -179,3 +179,60 @@ TEST_F(GuestCallTest, TouchingTheGuardAreaFaults) {
 
     EXPECT_DEATH(static_cast<void>(cpu::callGuest(codeBase, stack.value())), "");
 }
+
+namespace {
+
+u64 hostExitWith(u64 code, u64, u64, u64, u64, u64) noexcept {
+    cpu::exitGuest(code);
+}
+
+} // namespace
+
+TEST_F(GuestCallTest, ExitGuestEndsTheCallImmediately) {
+    auto stubs = cpu::StubTable::create(space, stubBase, 8);
+    ASSERT_TRUE(stubs.ok());
+    const auto stub = stubs.value().add(hostExitWith);
+    ASSERT_TRUE(stub.ok());
+
+    // sub rsp, 8 ; mov edi, 99 ; movabs rax, <stub> ; call rax ; mov eax, 1 ; add rsp, 8 ; ret
+    std::vector<u8> code;
+    append(code, {0x48, 0x83, 0xEC, 0x08});
+    append(code, {0xBF, 0x63, 0x00, 0x00, 0x00});
+    append(code, {0x48, 0xB8});
+    appendU64(code, stub.value());
+    append(code, {0xFF, 0xD0});
+    append(code, {0xB8, 0x01, 0x00, 0x00, 0x00}); // never reached
+    append(code, {0x48, 0x83, 0xC4, 0x08, 0xC3});
+    ASSERT_TRUE(loadCode(code));
+    auto stack = cpu::GuestStack::create(space, stackBase, stackSize, "stack");
+    ASSERT_TRUE(stack.ok());
+
+    const auto result = cpu::callGuest(codeBase, stack.value());
+
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result.value(), 99U);
+}
+
+TEST_F(GuestCallTest, ExitGuestLeavesTheCpuLayerUsable) {
+    auto stubs = cpu::StubTable::create(space, stubBase, 8);
+    ASSERT_TRUE(stubs.ok());
+    const auto exitStub = stubs.value().add(hostExitWith);
+    ASSERT_TRUE(exitStub.ok());
+    ASSERT_TRUE(loadCode({0xB8, 0x2A, 0x00, 0x00, 0x00, 0xC3})); // mov eax, 42 ; ret
+    auto stack = cpu::GuestStack::create(space, stackBase, stackSize, "stack");
+    ASSERT_TRUE(stack.ok());
+
+    for (u64 i = 0; i < 200; ++i) {
+        const auto exited = cpu::callGuest(exitStub.value(), stack.value(), {i});
+        ASSERT_TRUE(exited.ok());
+        ASSERT_EQ(exited.value(), i);
+    }
+
+    const auto normal = cpu::callGuest(codeBase, stack.value());
+    ASSERT_TRUE(normal.ok());
+    EXPECT_EQ(normal.value(), 42U);
+}
+
+TEST(ExitGuestDeathTest, OutsideOfAGuestCallIsFatal) {
+    EXPECT_DEATH(cpu::exitGuest(1), "outside of a guest call");
+}

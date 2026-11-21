@@ -4,6 +4,18 @@
 #include <format>
 #include <utility>
 
+#if defined(__SANITIZE_ADDRESS__)
+#define ZENITH_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define ZENITH_ASAN 1
+#endif
+#endif
+
+#ifdef ZENITH_ASAN
+#include <sanitizer/asan_interface.h>
+#endif
+
 namespace zenith::cpu {
 
 Result<GuestStack> GuestStack::create(memory::AddressSpace& space, GuestAddr base, u64 size, std::string_view name) {
@@ -21,6 +33,13 @@ Result<GuestStack> GuestStack::create(memory::AddressSpace& space, GuestAddr bas
         static_cast<void>(space.unmap(base, stackGuardSize));
         return makeError("stack '{}': cannot map {:#x} bytes at {:#x}", name, usableSize, usableStart);
     }
+
+#ifdef ZENITH_ASAN
+    // Host functions run on this stack and exitGuest() abandons their frames, which can leave stale
+    // AddressSanitizer poison behind. Start every stack from a clean shadow.
+    ASAN_UNPOISON_MEMORY_REGION(memory::AddressSpace::hostPointer(usableStart), usableSize);
+#endif
+
     return GuestStack(space, base, size);
 }
 

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "memory/address_space.hpp"
 
-#include <iterator>
-
 #include "common/log.hpp"
+
+#include <iterator>
 
 namespace zenith::memory {
 namespace {
@@ -11,7 +11,7 @@ namespace {
 // Upper bound of the canonical user-space range on x86-64.
 constexpr GuestAddr userSpaceLimit = 1ULL << 47;
 
-}  // namespace
+} // namespace
 
 AddressSpace::~AddressSpace() {
     const std::lock_guard lock(mutex_);
@@ -141,4 +141,4 @@ usize AddressSpace::regionCount() const {
     return regions_.size();
 }
 
-}  // namespace zenith::memory
+} // namespace zenith::memory

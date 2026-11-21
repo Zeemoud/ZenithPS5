@@ -20,4 +20,11 @@ using GuestArgs = std::array<u64, 6>;
 // process down. Fails (without running anything) if `entry` is not in an executable region.
 [[nodiscard]] Result<u64> callGuest(GuestAddr entry, const GuestStack& stack, const GuestArgs& args = {});
 
+// Ends the guest call in progress: callGuest() returns `value`, as if the guest function had returned it.
+//
+// Only valid from a host function that guest code called (see StubTable). The host frames between that
+// function and callGuest() are abandoned: their destructors do not run, so call this when nothing in
+// those frames needs cleanup. Calling it outside of a guest call is a fatal error.
+[[noreturn]] void exitGuest(u64 value);
+
 } // namespace zenith::cpu

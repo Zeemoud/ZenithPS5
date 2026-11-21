@@ -23,7 +23,13 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
         return makeError("{}: {}", name, elf.error());
     }
 
-    memory::AddressSpace space; // declared first: destroyed last, after the stack and the image
+    memory::AddressSpace space; // declared first: destroyed last, after everything mapped in it
+
+    // The bridge goes first, so a program that wants its addresses is refused by the loader.
+    const auto bridge = installBridge(space);
+    if (!bridge.ok()) {
+        return makeError("{}: {}", name, bridge.error());
+    }
 
     const auto image = loader::loadElf(elf.value(), data, space, name);
     if (!image.ok()) {
@@ -34,6 +40,11 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
     if (!stack.ok()) {
         return makeError("{}: {}", name, stack.error());
     }
+
+    RunContext context;
+    context.space = &space;
+    context.output = options.output;
+    const ScopedRunContext scope(context);
 
     ZENITH_LOG_INFO(Core, "running '{}' from {:#x}", name, image.value().entry);
     return cpu::callGuest(image.value().entry, stack.value());

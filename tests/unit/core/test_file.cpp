@@ -34,9 +34,8 @@ TEST(ReadFile, ReadsTheWholeFile) {
 
 TEST(ReadFile, ReadsAnEmptyFile) {
     const auto path = tempPath("read_empty");
-    {
-        std::ofstream out(path, std::ios::binary);
-    }
+    std::ofstream out(path, std::ios::binary);
+    out.close();
 
     const auto bytes = core::readFile(path);
     std::filesystem::remove(path);

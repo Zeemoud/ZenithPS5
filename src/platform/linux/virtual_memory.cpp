@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "platform/virtual_memory.hpp"
 
-#include <sys/mman.h>
-#include <unistd.h>
+#include "common/log.hpp"
 
 #include <cerrno>
 #include <cstring>
-
-#include "common/log.hpp"
+#include <sys/mman.h>
+#include <unistd.h>
 
 #ifndef MAP_FIXED_NOREPLACE
-#define MAP_FIXED_NOREPLACE 0x100000  // Linux 4.17+; older kernels treat it as a hint, which we check below
+#define MAP_FIXED_NOREPLACE 0x100000 // Linux 4.17+; older kernels treat it as a hint, which we check below
 #endif
 
 namespace zenith::platform {
@@ -30,7 +29,7 @@ int toNative(Protection protection) {
     return native;
 }
 
-}  // namespace
+} // namespace
 
 usize pageSize() {
     static const usize size = static_cast<usize>(sysconf(_SC_PAGESIZE));
@@ -38,8 +37,8 @@ usize pageSize() {
 }
 
 bool reserveFixed(void* address, usize size) {
-    void* result = mmap(address, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE,
-                        -1, 0);
+    void* result =
+        mmap(address, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
     if (result == MAP_FAILED) {
         ZENITH_LOG_DEBUG(Memory, "reserveFixed({}, {:#x}) failed: {}", address, size, std::strerror(errno));
         return false;
@@ -78,4 +77,4 @@ bool release(void* address, usize size) {
     return true;
 }
 
-}  // namespace zenith::platform
+} // namespace zenith::platform

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
-#include <gtest/gtest.h>
-
-#include <algorithm>
-
 #include "common/log.hpp"
 #include "memory/address_space.hpp"
+
+#include <algorithm>
+#include <gtest/gtest.h>
 
 using namespace zenith;
 using memory::guestPageSize;
@@ -14,9 +13,9 @@ namespace {
 constexpr GuestAddr base = 0x2000'0000'0000ULL;
 constexpr u64 oneRegion = 4 * guestPageSize;
 
-int hostVariable = 0;  // lives in the host's own data segment: certainly mapped
+int hostVariable = 0; // lives in the host's own data segment: certainly mapped
 
-}  // namespace
+} // namespace
 
 class AddressSpaceTest : public ::testing::Test {
 protected:
@@ -78,7 +77,7 @@ TEST_F(AddressSpaceTest, NeverReplacesAMappingOwnedByTheHost) {
 
     EXPECT_FALSE(space.map(hostPage, guestPageSize, platform::readWrite, "clobber"));
 
-    hostVariable = 42;  // would crash if the host mapping had been replaced
+    hostVariable = 42; // would crash if the host mapping had been replaced
     EXPECT_EQ(hostVariable, 42);
     EXPECT_EQ(space.regionCount(), 0U);
 }

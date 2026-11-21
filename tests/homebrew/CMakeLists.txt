@@ -27,3 +27,4 @@ endfunction()
 
 zenith_add_homebrew(return42 "guest returned 42")
 zenith_add_homebrew(data_bss "guest returned 42")
+zenith_add_homebrew(hello "Hello from the guest!")

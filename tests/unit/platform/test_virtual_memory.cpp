@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
-#include <gtest/gtest.h>
-
-#include <algorithm>
-
 #include "common/log.hpp"
 #include "platform/virtual_memory.hpp"
+
+#include <algorithm>
+#include <gtest/gtest.h>
 
 using namespace zenith;
 
@@ -15,7 +14,7 @@ constexpr u64 baseAddress = 0x2000'0000'0000ULL;
 constexpr usize reservedSize = 1 * MiB;
 constexpr usize usableSize = 64 * KiB;
 
-}  // namespace
+} // namespace
 
 class VirtualMemoryTest : public ::testing::Test {
 protected:

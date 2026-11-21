@@ -1,4 +1,6 @@
 add_library(zenith_core STATIC
+  bridge.cpp
+  bridge.hpp
   file.cpp
   file.hpp
   run_elf.cpp

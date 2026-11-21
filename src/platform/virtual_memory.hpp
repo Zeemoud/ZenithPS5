@@ -42,4 +42,4 @@ bool decommit(void* address, usize size);
 // Gives the range back to the host.
 bool release(void* address, usize size);
 
-}  // namespace zenith::platform
+} // namespace zenith::platform

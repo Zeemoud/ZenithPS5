@@ -31,7 +31,7 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
         return makeError("{}: {}", name, bridge.error());
     }
 
-    const auto image = loader::loadElf(elf.value(), data, space, name);
+    const auto image = loader::loadElf(elf.value(), data, space, name, {.baseAddress = options.imageBase});
     if (!image.ok()) {
         return makeError("{}", image.error());
     }

@@ -11,8 +11,9 @@
 namespace zenith::core {
 
 struct RunOptions {
-    u64 stackSize = 1 * MiB; // size of the main guest stack, guard area included
-    OutputSink output;       // where the guest's output goes; empty means the host's stdout/stderr
+    u64 stackSize = 1 * MiB;        // size of the main guest stack, guard area included
+    GuestAddr imageBase = 0x400000; // where a position-independent program (ET_DYN) is loaded
+    OutputSink output;              // where the guest's output goes; empty means the host's stdout/stderr
 };
 
 // Loads a plain ELF executable into a fresh guest address space, installs the test bridge, runs the entry

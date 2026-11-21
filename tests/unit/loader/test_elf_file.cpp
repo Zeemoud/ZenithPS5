@@ -5,6 +5,7 @@
 #include <cstring>
 #include <gtest/gtest.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace zenith;
@@ -88,9 +89,9 @@ TEST(ElfFile, RejectsAnotherMachine) {
     EXPECT_NE(elf.error().find("machine"), std::string::npos);
 }
 
-TEST(ElfFile, RejectsNonExecutableTypes) {
+TEST(ElfFile, RejectsRelocatableObjects) {
     auto bytes = validFile();
-    poke<u16>(bytes, offsetType, 3); // ET_DYN
+    poke<u16>(bytes, offsetType, 1); // ET_REL
 
     EXPECT_FALSE(loader::ElfFile::parse(bytes).ok());
 }
@@ -144,4 +145,63 @@ TEST(ElfFile, IgnoresNonLoadSegmentsWhenValidating) {
 
     ASSERT_TRUE(elf.ok()) << elf.error();
     EXPECT_EQ(elf.value().programHeaders().size(), 2U);
+}
+
+namespace {
+
+std::vector<u8> positionIndependentFile(std::vector<std::pair<i64, u64>> extraTags = {}) {
+    return ElfBuilder{}
+        .type(loader::elf::typeSharedObject)
+        .segment({.vaddr = 0, .bytes = {0xC3}})
+        .dynamic(0x10000, {{.offset = 0x20000, .addend = 0x10}}, std::move(extraTags))
+        .build();
+}
+
+} // namespace
+
+TEST(ElfFile, ParsesAPositionIndependentFile) {
+    const auto bytes = positionIndependentFile();
+
+    const auto elf = loader::ElfFile::parse(bytes);
+
+    ASSERT_TRUE(elf.ok()) << elf.error();
+    EXPECT_EQ(elf.value().type(), loader::elf::typeSharedObject);
+    EXPECT_EQ(elf.value().dynamic().rela, 0x10000U + 4 * sizeof(loader::elf::Dyn)); // right after the section
+    EXPECT_EQ(elf.value().dynamic().relaSize, sizeof(loader::elf::Rela));
+    EXPECT_FALSE(elf.value().dynamic().needsLibraries);
+    EXPECT_FALSE(elf.value().dynamic().hasPackedRelocations);
+}
+
+TEST(ElfFile, FixedAddressFilesHaveNoDynamicInfo) {
+    const auto bytes = validFile();
+
+    const auto elf = loader::ElfFile::parse(bytes);
+
+    ASSERT_TRUE(elf.ok());
+    EXPECT_EQ(elf.value().type(), loader::elf::typeExecutable);
+    EXPECT_EQ(elf.value().dynamic().relaSize, 0U);
+}
+
+TEST(ElfFile, ReportsSharedLibraryDependencies) {
+    const auto bytes = positionIndependentFile({{loader::elf::dynNeeded, 1}});
+
+    const auto elf = loader::ElfFile::parse(bytes);
+
+    ASSERT_TRUE(elf.ok()) << elf.error();
+    EXPECT_TRUE(elf.value().dynamic().needsLibraries);
+}
+
+TEST(ElfFile, ReportsPackedRelocations) {
+    const auto bytes = positionIndependentFile({{loader::elf::dynRelr, 0x10000}});
+
+    const auto elf = loader::ElfFile::parse(bytes);
+
+    ASSERT_TRUE(elf.ok()) << elf.error();
+    EXPECT_TRUE(elf.value().dynamic().hasPackedRelocations);
+}
+
+TEST(ElfFile, RejectsAWrongRelocationEntrySize) {
+    const auto bytes = positionIndependentFile({{loader::elf::dynRelaEntry, 16}});
+
+    EXPECT_FALSE(loader::ElfFile::parse(bytes).ok());
 }

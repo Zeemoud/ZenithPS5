@@ -23,10 +23,27 @@ inline constexpr u8 classElf64 = 2;
 inline constexpr u8 dataLittleEndian = 1;
 inline constexpr u8 currentVersion = 1;
 
-inline constexpr u16 typeExecutable = 2; // ET_EXEC
-inline constexpr u16 machineX86_64 = 62; // EM_X86_64
+inline constexpr u16 typeExecutable = 2;   // ET_EXEC: fixed addresses
+inline constexpr u16 typeSharedObject = 3; // ET_DYN: position-independent, loaded at any base
+inline constexpr u16 machineX86_64 = 62;   // EM_X86_64
 
-inline constexpr u32 segmentLoad = 1; // PT_LOAD
+inline constexpr u32 segmentLoad = 1;    // PT_LOAD
+inline constexpr u32 segmentDynamic = 2; // PT_DYNAMIC
+
+// Tags of the dynamic section (d_tag).
+inline constexpr i64 dynNull = 0;
+inline constexpr i64 dynNeeded = 1;
+inline constexpr i64 dynPltRelSize = 2;
+inline constexpr i64 dynRela = 7;
+inline constexpr i64 dynRelaSize = 8;
+inline constexpr i64 dynRelaEntry = 9;
+inline constexpr i64 dynJmpRel = 23;
+inline constexpr i64 dynRelrSize = 35;
+inline constexpr i64 dynRelr = 36;
+
+// Relocation types (x86-64).
+inline constexpr u32 relocNone = 0;     // R_X86_64_NONE
+inline constexpr u32 relocRelative = 8; // R_X86_64_RELATIVE
 
 inline constexpr u32 flagExecute = 1;
 inline constexpr u32 flagWrite = 2;
@@ -60,6 +77,19 @@ struct ProgramHeader {
     u64 align;
 };
 
+struct Dyn {
+    i64 tag;
+    u64 value;
+};
+
+struct Rela {
+    u64 offset;
+    u64 info; // type in the low 32 bits, symbol index in the high 32 bits
+    i64 addend;
+};
+
+static_assert(sizeof(Dyn) == 16, "ELF64 dynamic entry must be 16 bytes");
+static_assert(sizeof(Rela) == 24, "ELF64 relocation entry must be 24 bytes");
 static_assert(sizeof(Header) == 64, "ELF64 header must be 64 bytes");
 static_assert(sizeof(ProgramHeader) == 56, "ELF64 program header must be 56 bytes");
 

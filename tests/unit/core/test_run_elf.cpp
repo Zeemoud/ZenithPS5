@@ -73,3 +73,45 @@ TEST_F(RunElfTest, HonorsTheStackSizeOption) {
 
     EXPECT_FALSE(result.ok());
 }
+
+namespace {
+
+// A position-independent program: loads a pointer from a relocated slot and returns it.
+//   mov rax, [rip + disp32] ; ret        with the slot at link-time address 0x10000
+std::vector<u8> relocatedPointerProgram() {
+    constexpr u64 slot = 0x10000;
+    constexpr u32 displacement = static_cast<u32>(slot - 7); // RIP after the 7-byte mov is at 7
+    std::vector<u8> code = {0x48, 0x8B, 0x05};
+    for (int i = 0; i < 4; ++i) {
+        code.push_back(static_cast<u8>(displacement >> (8 * i)));
+    }
+    code.push_back(0xC3);
+
+    return ElfBuilder{}
+        .type(loader::elf::typeSharedObject)
+        .entry(0)
+        .segment({.vaddr = 0, .bytes = code})
+        .segment(
+            {.flags = loader::elf::flagRead | loader::elf::flagWrite, .vaddr = slot, .bytes = std::vector<u8>(8, 0)})
+        .dynamic(0x20000, {{.offset = slot, .addend = 0x1234}})
+        .build();
+}
+
+} // namespace
+
+TEST_F(RunElfTest, RunsAPositionIndependentProgramAtTheDefaultBase) {
+    const auto result = core::runElf(relocatedPointerProgram(), "pie.elf");
+
+    ASSERT_TRUE(result.ok()) << result.error();
+    EXPECT_EQ(result.value(), core::RunOptions{}.imageBase + 0x1234);
+}
+
+TEST_F(RunElfTest, RunsAPositionIndependentProgramAtTheRequestedBase) {
+    core::RunOptions options;
+    options.imageBase = 0x2000'0000'0000ULL;
+
+    const auto result = core::runElf(relocatedPointerProgram(), "pie.elf", options);
+
+    ASSERT_TRUE(result.ok()) << result.error();
+    EXPECT_EQ(result.value(), options.imageBase + 0x1234);
+}

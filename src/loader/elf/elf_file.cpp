@@ -14,6 +14,57 @@ constexpr bool fitsIn(u64 offset, u64 size, u64 total) {
     return offset <= total && size <= total - offset;
 }
 
+// Reads the entries of the dynamic section, up to DT_NULL.
+Result<DynamicInfo> parseDynamic(std::span<const u8> data, const elf::ProgramHeader& ph) {
+    if (!fitsIn(ph.offset, ph.filesz, data.size())) {
+        return makeError("the dynamic section is outside the file");
+    }
+
+    DynamicInfo info;
+    const u64 count = ph.filesz / sizeof(elf::Dyn);
+    for (u64 i = 0; i < count; ++i) {
+        elf::Dyn entry;
+        std::memcpy(&entry, data.data() + ph.offset + i * sizeof(elf::Dyn), sizeof(entry));
+        if (entry.tag == elf::dynNull) {
+            break;
+        }
+
+        switch (entry.tag) {
+        case elf::dynRela:
+            info.rela = entry.value;
+            break;
+        case elf::dynRelaSize:
+            info.relaSize = entry.value;
+            break;
+        case elf::dynRelaEntry:
+            if (entry.value != sizeof(elf::Rela)) {
+                return makeError("unexpected relocation entry size {}", entry.value);
+            }
+            break;
+        case elf::dynJmpRel:
+            info.jmpRel = entry.value;
+            break;
+        case elf::dynPltRelSize:
+            info.pltRelSize = entry.value;
+            break;
+        case elf::dynNeeded:
+            info.needsLibraries = true;
+            break;
+        case elf::dynRelr:
+        case elf::dynRelrSize:
+            info.hasPackedRelocations = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (info.relaSize % sizeof(elf::Rela) != 0 || info.pltRelSize % sizeof(elf::Rela) != 0) {
+        return makeError("a relocation table size is not a multiple of the entry size");
+    }
+    return info;
+}
+
 } // namespace
 
 Result<ElfFile> ElfFile::parse(std::span<const u8> data) {
@@ -39,8 +90,8 @@ Result<ElfFile> ElfFile::parse(std::span<const u8> data) {
     if (header.machine != elf::machineX86_64) {
         return makeError("unsupported machine {:#x} (expected x86-64)", header.machine);
     }
-    if (header.type != elf::typeExecutable) {
-        return makeError("unsupported ELF type {:#x} (only ET_EXEC is supported yet)", header.type);
+    if (header.type != elf::typeExecutable && header.type != elf::typeSharedObject) {
+        return makeError("unsupported ELF type {:#x} (only ET_EXEC and ET_DYN are supported)", header.type);
     }
     if (header.phentsize != sizeof(elf::ProgramHeader)) {
         return makeError("unexpected program header size {}", header.phentsize);
@@ -55,6 +106,7 @@ Result<ElfFile> ElfFile::parse(std::span<const u8> data) {
     }
 
     ElfFile file;
+    file.type_ = header.type;
     file.entry_ = header.entry;
     file.programHeaders_.resize(header.phnum);
     std::memcpy(file.programHeaders_.data(), data.data() + header.phoff, tableSize);
@@ -72,6 +124,19 @@ Result<ElfFile> ElfFile::parse(std::span<const u8> data) {
         }
         if (ph.vaddr + ph.memsz < ph.vaddr) {
             return makeError("segment {}: address range overflows", i);
+        }
+    }
+
+    if (header.type == elf::typeSharedObject) {
+        for (const elf::ProgramHeader& ph : file.programHeaders_) {
+            if (ph.type == elf::segmentDynamic) {
+                const auto dynamic = parseDynamic(data, ph);
+                if (!dynamic.ok()) {
+                    return makeError("{}", dynamic.error());
+                }
+                file.dynamic_ = dynamic.value();
+                break;
+            }
         }
     }
 

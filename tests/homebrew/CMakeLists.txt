@@ -21,10 +21,16 @@ function(zenith_add_homebrew name expected_output)
     VERBATIM)
   add_custom_target(homebrew_${name} ALL DEPENDS "${elf}")
 
-  add_test(NAME homebrew.${name} COMMAND zenith "${elf}")
+  if("${ARGV2}" STREQUAL "EXPECT_CRASH")
+    # The program is expected to die from a signal: run it through sh so the test only checks the report.
+    add_test(NAME homebrew.${name} COMMAND sh -c "\"$<TARGET_FILE:zenith>\" \"${elf}\"; exit 0")
+  else()
+    add_test(NAME homebrew.${name} COMMAND zenith "${elf}")
+  endif()
   set_tests_properties(homebrew.${name} PROPERTIES PASS_REGULAR_EXPRESSION "${expected_output}")
 endfunction()
 
 zenith_add_homebrew(return42 "guest returned 42")
 zenith_add_homebrew(data_bss "guest returned 42")
 zenith_add_homebrew(hello "Hello from the guest!")
+zenith_add_homebrew(crash_null "null pointer dereference" EXPECT_CRASH)

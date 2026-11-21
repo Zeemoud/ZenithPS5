@@ -6,6 +6,8 @@ if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
 endif()
 
 add_library(zenith_cpu STATIC
+  crash_handler.cpp
+  crash_handler.hpp
   guest_call.cpp
   guest_call.hpp
   guest_stack.cpp

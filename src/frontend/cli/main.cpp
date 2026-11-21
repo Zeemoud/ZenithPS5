@@ -2,6 +2,7 @@
 #include "common/log.hpp"
 #include "core/file.hpp"
 #include "core/run_elf.hpp"
+#include "cpu/crash_handler.hpp"
 
 #include <cstdio>
 #include <format>
@@ -47,6 +48,8 @@ int usageError(std::string_view message) {
 
 int main(int argc, char** argv) {
     using namespace zenith;
+
+    cpu::installCrashHandler();
 
     const std::span<char*> args(argv, static_cast<usize>(argc));
     constexpr std::string_view logLevelPrefix = "--log-level=";

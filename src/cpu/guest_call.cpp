@@ -2,6 +2,7 @@
 #include "cpu/guest_call.hpp"
 
 #include "common/log.hpp"
+#include "cpu/crash_handler.hpp"
 
 #include <cstddef>
 
@@ -106,10 +107,19 @@ Result<u64> callGuest(GuestAddr entry, const GuestStack& stack, const GuestArgs&
     }
 
     ZENITH_LOG_TRACE(Cpu, "entering guest code at {:#x}", entry);
+    // Published for the crash handler (see crash_handler.hpp).
+    GuestCallInfo info;
+    info.entry = entry;
+    info.stackBase = stack.base();
+    info.guardEnd = stack.base() + stackGuardSize;
+    info.stackTop = stack.top();
+
     ZenithEnterContext* const outerCall = currentCall;
+    const GuestCallInfo* const outerInfo = detail::exchangeCurrentGuestCall(&info);
     currentCall = &context;
     const u64 result = zenith_cpu_enter(&context);
     currentCall = outerCall;
+    detail::exchangeCurrentGuestCall(outerInfo);
     ZENITH_LOG_TRACE(Cpu, "guest code returned {:#x}", result);
     return result;
 }

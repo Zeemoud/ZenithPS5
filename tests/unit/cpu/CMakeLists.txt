@@ -1,4 +1,5 @@
 add_executable(zenith_cpu_tests
+  test_crash_handler.cpp
   test_guest_call.cpp
   test_guest_stack.cpp
   test_stub_table.cpp)

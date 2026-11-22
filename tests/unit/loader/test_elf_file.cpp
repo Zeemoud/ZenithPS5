@@ -168,7 +168,7 @@ TEST(ElfFile, ParsesAPositionIndependentFile) {
     EXPECT_EQ(elf.value().type(), loader::elf::typeSharedObject);
     EXPECT_EQ(elf.value().dynamic().rela, 0x10000U + 4 * sizeof(loader::elf::Dyn)); // right after the section
     EXPECT_EQ(elf.value().dynamic().relaSize, sizeof(loader::elf::Rela));
-    EXPECT_FALSE(elf.value().dynamic().needsLibraries);
+    EXPECT_TRUE(elf.value().dynamic().needed.empty());
     EXPECT_FALSE(elf.value().dynamic().hasPackedRelocations);
 }
 
@@ -188,7 +188,7 @@ TEST(ElfFile, ReportsSharedLibraryDependencies) {
     const auto elf = loader::ElfFile::parse(bytes);
 
     ASSERT_TRUE(elf.ok()) << elf.error();
-    EXPECT_TRUE(elf.value().dynamic().needsLibraries);
+    EXPECT_EQ(elf.value().dynamic().needed.size(), 1U);
 }
 
 TEST(ElfFile, ReportsPackedRelocations) {
@@ -202,6 +202,30 @@ TEST(ElfFile, ReportsPackedRelocations) {
 
 TEST(ElfFile, RejectsAWrongRelocationEntrySize) {
     const auto bytes = positionIndependentFile({{loader::elf::dynRelaEntry, 16}});
+
+    EXPECT_FALSE(loader::ElfFile::parse(bytes).ok());
+}
+
+TEST(ElfFile, ReadsTheSymbolAndStringTables) {
+    const auto bytes = ElfBuilder{}
+                           .type(loader::elf::typeSharedObject)
+                           .segment({.vaddr = 0, .bytes = {0xC3}})
+                           .dynamic(0x10000, {})
+                           .symbols({{.name = "alpha"}})
+                           .needed({"libx.so"})
+                           .build();
+
+    const auto elf = loader::ElfFile::parse(bytes);
+
+    ASSERT_TRUE(elf.ok()) << elf.error();
+    EXPECT_NE(elf.value().dynamic().symtab, 0U);
+    EXPECT_NE(elf.value().dynamic().strtab, 0U);
+    EXPECT_GT(elf.value().dynamic().strSize, 0U);
+    EXPECT_EQ(elf.value().dynamic().needed.size(), 1U);
+}
+
+TEST(ElfFile, RejectsAWrongSymbolEntrySize) {
+    const auto bytes = positionIndependentFile({{loader::elf::dynSymEntry, 16}});
 
     EXPECT_FALSE(loader::ElfFile::parse(bytes).ok());
 }

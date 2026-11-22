@@ -22,9 +22,12 @@ using HostFunction = u64 (*)(u64, u64, u64, u64, u64, u64) noexcept;
 // The mappings are released when the object is destroyed, so it must not outlive its AddressSpace.
 class StubTable {
 public:
-    static constexpr u64 stubSize = 16;
+    static constexpr u64 stubSize = 16;   // default slot size
+    static constexpr u64 idStubSize = 32; // slot size needed by addWithId()
 
-    [[nodiscard]] static Result<StubTable> create(memory::AddressSpace& space, GuestAddr base, u64 capacity);
+    // Every stub takes one slot of `slotSize` bytes, so stub n is at base + n * slotSize.
+    [[nodiscard]] static Result<StubTable> create(memory::AddressSpace& space, GuestAddr base, u64 capacity,
+                                                  u64 slotSize = stubSize);
 
     ~StubTable();
 
@@ -36,17 +39,28 @@ public:
     // Creates a stub for `function` and returns its guest address.
     [[nodiscard]] Result<GuestAddr> add(HostFunction function);
 
+    // Like add(), but the stub first puts `id` in the first argument register (RDI): the host function learns
+    // which stub was called, at the price of losing the guest's own first argument. This is how one host
+    // function can serve many stubs (for example to report which unimplemented function was called).
+    // Needs slots of at least idStubSize bytes.
+    [[nodiscard]] Result<GuestAddr> addWithId(HostFunction function, u32 id);
+
     u64 size() const { return count_; }
     u64 capacity() const { return capacity_; }
+    u64 slotSize() const { return slotSize_; }
 
 private:
-    StubTable(memory::AddressSpace& space, GuestAddr base, u64 capacity, u64 regionSize)
-        : space_(&space), base_(base), capacity_(capacity), regionSize_(regionSize) {}
+    StubTable(memory::AddressSpace& space, GuestAddr base, u64 capacity, u64 slotSize, u64 regionSize)
+        : space_(&space), base_(base), capacity_(capacity), slotSize_(slotSize), regionSize_(regionSize) {}
     void release();
+
+    // Writes `code` into the next slot (padded with int3) and returns its address.
+    [[nodiscard]] Result<GuestAddr> emit(const u8* code, usize length);
 
     memory::AddressSpace* space_ = nullptr;
     GuestAddr base_ = 0;
     u64 capacity_ = 0;
+    u64 slotSize_ = stubSize;
     u64 regionSize_ = 0;
     u64 count_ = 0;
 };

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -23,6 +24,14 @@ struct RelocationSpec {
     u64 offset = 0;
     u32 type = loader::elf::relocRelative;
     i64 addend = 0;
+    u32 symbol = 0; // index in the symbol table (0 is the null symbol)
+};
+
+struct SymbolSpec {
+    std::string name;
+    bool defined = false; // false: an import
+    u64 value = 0;        // link-time address, for a defined symbol
+    bool weak = false;
 };
 
 // Builds tiny synthetic ELF64 x86-64 files, so tests need no real binary.
@@ -51,6 +60,17 @@ public:
         dynamicVaddr_ = vaddr;
         relocations_ = std::move(relocations);
         extraTags_ = std::move(extraTags);
+        return *this;
+    }
+
+    // Symbols (index 1, 2, ... in the symbol table) and DT_NEEDED libraries, stored in the dynamic segment.
+    ElfBuilder& symbols(std::vector<SymbolSpec> specs) {
+        symbols_ = std::move(specs);
+        return *this;
+    }
+
+    ElfBuilder& needed(std::vector<std::string> libraries) {
+        needed_ = std::move(libraries);
         return *this;
     }
 
@@ -100,22 +120,65 @@ public:
         }
 
         if (hasDynamic_) {
+            // String table and symbol table.
+            std::vector<u8> strtab = {0};
+            auto addString = [&strtab](const std::string& text) {
+                const u32 offset = static_cast<u32>(strtab.size());
+                strtab.insert(strtab.end(), text.begin(), text.end());
+                strtab.push_back(0);
+                return offset;
+            };
+            std::vector<u32> neededOffsets;
+            for (const std::string& library : needed_) {
+                neededOffsets.push_back(addString(library));
+            }
+            std::vector<Sym> symtab(1); // entry 0 is the null symbol
+            for (const SymbolSpec& symbol : symbols_) {
+                Sym entry{};
+                entry.name = addString(symbol.name);
+                entry.info = static_cast<u8>(((symbol.weak ? bindWeak : 1) << 4) | 2); // FUNC
+                entry.shndx = symbol.defined ? 1 : shnUndef;
+                entry.value = symbol.value;
+                symtab.push_back(entry);
+            }
+            const bool hasSymbols = !symbols_.empty() || !needed_.empty();
+
+            // Layout of the segment: dynamic section, relocation table, symbol table, string table.
+            const u64 tagCount = 3 + (hasSymbols ? 4 : 0) + neededOffsets.size() + extraTags_.size() + 1;
+            const u64 dynamicSize = tagCount * sizeof(Dyn);
+            const u64 relaVaddr = dynamicVaddr_ + dynamicSize;
+            const u64 symtabVaddr = relaVaddr + relocations_.size() * sizeof(Rela);
+            const u64 strtabVaddr = symtabVaddr + symtab.size() * sizeof(Sym);
+
             std::vector<Dyn> entries;
-            const u64 dynamicSize = (4 + extraTags_.size()) * sizeof(Dyn); // RELA, RELASZ, RELAENT, extras, NULL
-            entries.push_back({dynRela, dynamicVaddr_ + dynamicSize});
+            entries.push_back({dynRela, relaVaddr});
             entries.push_back({dynRelaSize, relocations_.size() * sizeof(Rela)});
             entries.push_back({dynRelaEntry, sizeof(Rela)});
+            if (hasSymbols) {
+                entries.push_back({dynSymtab, symtabVaddr});
+                entries.push_back({dynStrtab, strtabVaddr});
+                entries.push_back({dynStrSize, strtab.size()});
+                entries.push_back({dynSymEntry, sizeof(Sym)});
+            }
+            for (const u32 offset : neededOffsets) {
+                entries.push_back({dynNeeded, offset});
+            }
             for (const auto& [tag, value] : extraTags_) {
                 entries.push_back({tag, value});
             }
             entries.push_back({dynNull, 0});
 
-            std::vector<u8> bytes(dynamicSize + relocations_.size() * sizeof(Rela));
+            std::vector<u8> bytes(dynamicSize + relocations_.size() * sizeof(Rela) + symtab.size() * sizeof(Sym) +
+                                  strtab.size());
             std::memcpy(bytes.data(), entries.data(), dynamicSize);
             for (usize i = 0; i < relocations_.size(); ++i) {
-                const Rela rela{relocations_[i].offset, relocations_[i].type, relocations_[i].addend};
+                const Rela rela{relocations_[i].offset,
+                                (static_cast<u64>(relocations_[i].symbol) << 32) | relocations_[i].type,
+                                relocations_[i].addend};
                 std::memcpy(bytes.data() + dynamicSize + i * sizeof(Rela), &rela, sizeof(rela));
             }
+            std::memcpy(bytes.data() + (symtabVaddr - dynamicVaddr_), symtab.data(), symtab.size() * sizeof(Sym));
+            std::memcpy(bytes.data() + (strtabVaddr - dynamicVaddr_), strtab.data(), strtab.size());
 
             // The LOAD segment that holds the section, then the PT_DYNAMIC header pointing into it.
             const u64 offset = dataStart + payload.size();
@@ -151,6 +214,8 @@ private:
     u64 dynamicVaddr_ = 0;
     std::vector<RelocationSpec> relocations_;
     std::vector<std::pair<i64, u64>> extraTags_;
+    std::vector<SymbolSpec> symbols_;
+    std::vector<std::string> needed_;
 };
 
 } // namespace zenith::test

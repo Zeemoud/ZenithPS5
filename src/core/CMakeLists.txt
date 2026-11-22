@@ -3,6 +3,8 @@ add_library(zenith_core STATIC
   bridge.hpp
   file.cpp
   file.hpp
+  imports.cpp
+  imports.hpp
   run_elf.cpp
   run_elf.hpp)
 add_library(zenith::core ALIAS zenith_core)

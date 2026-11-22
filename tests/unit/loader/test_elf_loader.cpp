@@ -19,6 +19,12 @@ namespace {
 constexpr GuestAddr base = 0x2000'0000'0000ULL;
 constexpr u64 dataOffsetInSpace = 4 * guestPageSize;
 
+loader::LoadOptions atBase(GuestAddr baseAddress) {
+    loader::LoadOptions options;
+    options.baseAddress = baseAddress;
+    return options;
+}
+
 int hostVariable = 0; // lives in the host's own data segment: certainly mapped
 
 const std::vector<u8> codeBytes = {0x90, 0x90, 0x90, 0xC3};
@@ -225,7 +231,7 @@ u64 readU64(GuestAddr address) {
 } // namespace
 
 TEST_F(ElfLoaderTest, MapsAPositionIndependentImageAtTheRequestedBase) {
-    const auto image = load(positionIndependent({}), {.baseAddress = base});
+    const auto image = load(positionIndependent({}), atBase(base));
 
     ASSERT_TRUE(image.ok()) << image.error();
     EXPECT_EQ(image.value().base, base);
@@ -246,7 +252,7 @@ TEST_F(ElfLoaderTest, UsesTheDefaultBaseWhenNoneIsGiven) {
 }
 
 TEST_F(ElfLoaderTest, AppliesRelativeRelocations) {
-    const auto image = load(positionIndependent({{.offset = slotVaddr, .addend = 0x1234}}), {.baseAddress = base});
+    const auto image = load(positionIndependent({{.offset = slotVaddr, .addend = 0x1234}}), atBase(base));
 
     ASSERT_TRUE(image.ok()) << image.error();
     EXPECT_EQ(image.value().relocationCount, 1U);
@@ -254,8 +260,8 @@ TEST_F(ElfLoaderTest, AppliesRelativeRelocations) {
 }
 
 TEST_F(ElfLoaderTest, RelocatesTargetsInReadOnlySegments) {
-    const auto image = load(positionIndependent({{.offset = slotVaddr, .addend = 0x40}}, {}, loader::elf::flagRead),
-                            {.baseAddress = base});
+    const auto image =
+        load(positionIndependent({{.offset = slotVaddr, .addend = 0x40}}, {}, loader::elf::flagRead), atBase(base));
 
     ASSERT_TRUE(image.ok()) << image.error();
     EXPECT_EQ(readU64(base + slotVaddr), base + 0x40);
@@ -263,9 +269,8 @@ TEST_F(ElfLoaderTest, RelocatesTargetsInReadOnlySegments) {
 }
 
 TEST_F(ElfLoaderTest, IgnoresRelocationsOfTypeNone) {
-    const auto image =
-        load(positionIndependent({{.offset = slotVaddr, .type = loader::elf::relocNone, .addend = 0x1234}}),
-             {.baseAddress = base});
+    const auto image = load(
+        positionIndependent({{.offset = slotVaddr, .type = loader::elf::relocNone, .addend = 0x1234}}), atBase(base));
 
     ASSERT_TRUE(image.ok()) << image.error();
     EXPECT_EQ(image.value().relocationCount, 0U);
@@ -273,8 +278,8 @@ TEST_F(ElfLoaderTest, IgnoresRelocationsOfTypeNone) {
 }
 
 TEST_F(ElfLoaderTest, RejectsUnsupportedRelocationTypes) {
-    const auto image = load(positionIndependent({{.offset = slotVaddr, .type = 7, .addend = 0}}), // JUMP_SLOT
-                            {.baseAddress = base});
+    const auto image = load(positionIndependent({{.offset = slotVaddr, .type = 5, .addend = 0}}), // R_X86_64_COPY
+                            atBase(base));
 
     ASSERT_FALSE(image.ok());
     EXPECT_NE(image.error().find("not supported"), std::string::npos);
@@ -282,30 +287,22 @@ TEST_F(ElfLoaderTest, RejectsUnsupportedRelocationTypes) {
 }
 
 TEST_F(ElfLoaderTest, RejectsRelocationTargetsOutsideTheImage) {
-    const auto image = load(positionIndependent({{.offset = 0x900000, .addend = 0}}), {.baseAddress = base});
+    const auto image = load(positionIndependent({{.offset = 0x900000, .addend = 0}}), atBase(base));
 
     ASSERT_FALSE(image.ok());
     EXPECT_NE(image.error().find("outside the image"), std::string::npos);
     EXPECT_EQ(space.regionCount(), 0U);
 }
 
-TEST_F(ElfLoaderTest, RejectsSharedLibraryDependencies) {
-    const auto image = load(positionIndependent({}, {{loader::elf::dynNeeded, 1}}), {.baseAddress = base});
-
-    ASSERT_FALSE(image.ok());
-    EXPECT_NE(image.error().find("shared libraries"), std::string::npos);
-    EXPECT_EQ(space.regionCount(), 0U);
-}
-
 TEST_F(ElfLoaderTest, RejectsPackedRelocations) {
-    const auto image = load(positionIndependent({}, {{loader::elf::dynRelr, dynamicVaddr}}), {.baseAddress = base});
+    const auto image = load(positionIndependent({}, {{loader::elf::dynRelr, dynamicVaddr}}), atBase(base));
 
     ASSERT_FALSE(image.ok());
     EXPECT_EQ(space.regionCount(), 0U);
 }
 
 TEST_F(ElfLoaderTest, RejectsAnUnalignedBaseAddress) {
-    const auto image = load(positionIndependent({}), {.baseAddress = base + 0x1000});
+    const auto image = load(positionIndependent({}), atBase(base + 0x1000));
 
     ASSERT_FALSE(image.ok());
     EXPECT_NE(image.error().find("aligned"), std::string::npos);
@@ -315,10 +312,172 @@ TEST_F(ElfLoaderTest, RejectsAnUnalignedBaseAddress) {
 TEST_F(ElfLoaderTest, FixedAddressExecutablesIgnoreTheBaseAddress) {
     const auto bytes = ElfBuilder{}.entry(base).segment(codeSegment(base)).build();
 
-    const auto image = load(bytes, {.baseAddress = base + 0x100000});
+    const auto image = load(bytes, atBase(base + 0x100000));
 
     ASSERT_TRUE(image.ok()) << image.error();
     EXPECT_EQ(image.value().base, 0U);
     EXPECT_EQ(image.value().entry, base);
     EXPECT_TRUE(space.find(base).has_value());
+}
+
+namespace {
+
+// An image with two 8-byte slots (at slotVaddr and slotVaddr + 8) that relocations fill with imports.
+std::vector<u8> importingImage(std::vector<test::RelocationSpec> relocations, std::vector<test::SymbolSpec> symbols,
+                               std::vector<std::string> libraries = {"libtest.so"}) {
+    return ElfBuilder{}
+        .type(loader::elf::typeSharedObject)
+        .entry(1)
+        .segment(codeSegment(0))
+        .segment({.flags = loader::elf::flagRead | loader::elf::flagWrite,
+                  .vaddr = slotVaddr,
+                  .bytes = std::vector<u8>(16, 0)})
+        .dynamic(dynamicVaddr, std::move(relocations), {})
+        .symbols(std::move(symbols))
+        .needed(std::move(libraries))
+        .build();
+}
+
+// Plays the host: provides "libtest.so" and binds each symbol to 0x7010, 0x7020, ... in request order.
+struct FakeHost {
+    std::vector<std::string> requested;
+
+    loader::LoadOptions options(GuestAddr baseAddress) {
+        loader::LoadOptions result = atBase(baseAddress);
+        result.hasLibrary = [](std::string_view library) { return library == "libtest.so"; };
+        result.resolveSymbol = [this](std::string_view symbol) -> Result<GuestAddr> {
+            requested.emplace_back(symbol);
+            if (symbol == "missing") {
+                return makeError("no such function");
+            }
+            return 0x7000 + 0x10 * requested.size();
+        };
+        return result;
+    }
+};
+
+test::RelocationSpec importAt(u64 slot, u32 type, u32 symbol, i64 addend = 0) {
+    return {.offset = slot, .type = type, .addend = addend, .symbol = symbol};
+}
+
+} // namespace
+
+TEST_F(ElfLoaderTest, ResolvesImportsByName) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::relocJumpSlot, 1),
+                                            importAt(slotVaddr + 8, loader::elf::relocGlobDat, 2)},
+                                           {{.name = "alpha"}, {.name = "beta"}}),
+                            host.options(base));
+
+    ASSERT_TRUE(image.ok()) << image.error();
+    ASSERT_EQ(image.value().imports.size(), 2U);
+    EXPECT_EQ(image.value().imports[0].name, "alpha");
+    EXPECT_EQ(image.value().imports[1].name, "beta");
+    EXPECT_EQ(readU64(base + slotVaddr), 0x7010U);
+    EXPECT_EQ(readU64(base + slotVaddr + 8), 0x7020U);
+    ASSERT_EQ(image.value().libraries.size(), 1U);
+    EXPECT_EQ(image.value().libraries[0], "libtest.so");
+}
+
+TEST_F(ElfLoaderTest, AsksTheHostOncePerSymbol) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::relocJumpSlot, 1),
+                                            importAt(slotVaddr + 8, loader::elf::relocGlobDat, 1)},
+                                           {{.name = "alpha"}}),
+                            host.options(base));
+
+    ASSERT_TRUE(image.ok()) << image.error();
+    EXPECT_EQ(host.requested.size(), 1U);
+    EXPECT_EQ(image.value().imports.size(), 1U);
+    EXPECT_EQ(readU64(base + slotVaddr), readU64(base + slotVaddr + 8));
+}
+
+TEST_F(ElfLoaderTest, AddsTheAddendToA64BitRelocation) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::reloc64, 1, 5)}, {{.name = "alpha"}}),
+                            host.options(base));
+
+    ASSERT_TRUE(image.ok()) << image.error();
+    EXPECT_EQ(readU64(base + slotVaddr), 0x7010U + 5);
+}
+
+TEST_F(ElfLoaderTest, DefinedSymbolsResolveToThemselves) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::relocGlobDat, 1)},
+                                           {{.name = "own", .defined = true, .value = 0x40}}),
+                            host.options(base));
+
+    ASSERT_TRUE(image.ok()) << image.error();
+    EXPECT_EQ(readU64(base + slotVaddr), base + 0x40);
+    EXPECT_TRUE(host.requested.empty());
+    EXPECT_TRUE(image.value().imports.empty());
+}
+
+TEST_F(ElfLoaderTest, RejectsALibraryTheHostDoesNotProvide) {
+    const auto image = load(importingImage({}, {{.name = "alpha"}}, {"libmissing.so"}), FakeHost{}.options(base));
+
+    ASSERT_FALSE(image.ok());
+    EXPECT_NE(image.error().find("libmissing.so"), std::string::npos);
+    EXPECT_NE(image.error().find("not provided"), std::string::npos);
+    EXPECT_EQ(space.regionCount(), 0U);
+}
+
+TEST_F(ElfLoaderTest, RejectsALibraryWhenNoProviderIsGiven) {
+    const auto image = load(importingImage({}, {{.name = "alpha"}}), atBase(base));
+
+    ASSERT_FALSE(image.ok());
+    EXPECT_NE(image.error().find("not provided"), std::string::npos);
+    EXPECT_EQ(space.regionCount(), 0U);
+}
+
+TEST_F(ElfLoaderTest, RejectsAnImportWhenNoResolverIsGiven) {
+    loader::LoadOptions options = atBase(base);
+    options.hasLibrary = [](std::string_view) { return true; };
+
+    const auto image =
+        load(importingImage({importAt(slotVaddr, loader::elf::relocJumpSlot, 1)}, {{.name = "alpha"}}), options);
+
+    ASSERT_FALSE(image.ok());
+    EXPECT_NE(image.error().find("no import resolver"), std::string::npos);
+    EXPECT_EQ(space.regionCount(), 0U);
+}
+
+TEST_F(ElfLoaderTest, PropagatesResolverFailures) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::relocJumpSlot, 1)}, {{.name = "missing"}}),
+                            host.options(base));
+
+    ASSERT_FALSE(image.ok());
+    EXPECT_NE(image.error().find("missing"), std::string::npos);
+    EXPECT_NE(image.error().find("no such function"), std::string::npos);
+    EXPECT_EQ(space.regionCount(), 0U);
+}
+
+TEST_F(ElfLoaderTest, AnUnresolvedWeakImportBecomesZero) {
+    FakeHost host;
+    const auto image =
+        load(importingImage({importAt(slotVaddr, loader::elf::relocGlobDat, 1)}, {{.name = "missing", .weak = true}}),
+             host.options(base));
+
+    ASSERT_TRUE(image.ok()) << image.error();
+    EXPECT_EQ(readU64(base + slotVaddr), 0U);
+}
+
+TEST_F(ElfLoaderTest, RejectsASymbolIndexOutsideTheTable) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::relocGlobDat, 900)}, {{.name = "alpha"}}),
+                            host.options(base));
+
+    ASSERT_FALSE(image.ok());
+    EXPECT_NE(image.error().find("symbol table"), std::string::npos);
+    EXPECT_EQ(space.regionCount(), 0U);
+}
+
+TEST_F(ElfLoaderTest, RejectsAGotRelocationWithoutASymbol) {
+    FakeHost host;
+    const auto image = load(importingImage({importAt(slotVaddr, loader::elf::relocGlobDat, 0)}, {{.name = "alpha"}}),
+                            host.options(base));
+
+    ASSERT_FALSE(image.ok());
+    EXPECT_EQ(space.regionCount(), 0U);
 }

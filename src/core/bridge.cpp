@@ -42,6 +42,15 @@ u64 hostExit(u64 code, u64, u64, u64, u64, u64) noexcept {
 
 } // namespace
 
+RunContext* currentRunContext() {
+    return currentContext;
+}
+
+void registerTestLibrary(ImportTable& imports) {
+    imports.addFunction(testLibraryName, "zenith_write", hostWrite);
+    imports.addFunction(testLibraryName, "zenith_exit", hostExit);
+}
+
 ScopedRunContext::ScopedRunContext(RunContext& context) : previous_(currentContext) {
     currentContext = &context;
 }

@@ -72,3 +72,29 @@ TEST_F(StubTableTest, ReleasesItsMemoryWhenDestroyed) {
 
     EXPECT_EQ(space.regionCount(), 0U);
 }
+
+TEST_F(StubTableTest, SlotSizeSpacesTheStubs) {
+    auto table = cpu::StubTable::create(space, stubBase, 8, cpu::StubTable::idStubSize);
+    ASSERT_TRUE(table.ok()) << table.error();
+
+    const auto first = table.value().add(hostNoop);
+    const auto second = table.value().add(hostNoop);
+
+    ASSERT_TRUE(first.ok());
+    ASSERT_TRUE(second.ok());
+    EXPECT_EQ(second.value() - first.value(), cpu::StubTable::idStubSize);
+    EXPECT_EQ(table.value().slotSize(), cpu::StubTable::idStubSize);
+}
+
+TEST_F(StubTableTest, RejectsABadSlotSize) {
+    EXPECT_FALSE(cpu::StubTable::create(space, stubBase, 8, 8).ok());
+    EXPECT_FALSE(cpu::StubTable::create(space, stubBase, 8, 24).ok());
+    EXPECT_EQ(space.regionCount(), 0U);
+}
+
+TEST_F(StubTableTest, StubsWithAnIdNeedBigSlots) {
+    auto table = cpu::StubTable::create(space, stubBase, 8);
+    ASSERT_TRUE(table.ok());
+
+    EXPECT_FALSE(table.value().addWithId(hostNoop, 1).ok());
+}

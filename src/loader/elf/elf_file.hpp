@@ -17,7 +17,10 @@ struct DynamicInfo {
     u64 relaSize = 0; // DT_RELASZ: size in bytes
     u64 jmpRel = 0;   // DT_JMPREL: relocations of the procedure linkage table (same entry format)
     u64 pltRelSize = 0;
-    bool needsLibraries = false;       // DT_NEEDED: the program wants shared libraries
+    u64 symtab = 0;                    // DT_SYMTAB: table of symbols (Elf64_Sym)
+    u64 strtab = 0;                    // DT_STRTAB: string table
+    u64 strSize = 0;                   // DT_STRSZ
+    std::vector<u64> needed;           // DT_NEEDED: offsets, in the string table, of the library names
     bool hasPackedRelocations = false; // DT_RELR: compact relocation format
 };
 

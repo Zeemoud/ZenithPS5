@@ -48,7 +48,21 @@ Result<DynamicInfo> parseDynamic(std::span<const u8> data, const elf::ProgramHea
             info.pltRelSize = entry.value;
             break;
         case elf::dynNeeded:
-            info.needsLibraries = true;
+            info.needed.push_back(entry.value);
+            break;
+        case elf::dynSymtab:
+            info.symtab = entry.value;
+            break;
+        case elf::dynStrtab:
+            info.strtab = entry.value;
+            break;
+        case elf::dynStrSize:
+            info.strSize = entry.value;
+            break;
+        case elf::dynSymEntry:
+            if (entry.value != sizeof(elf::Sym)) {
+                return makeError("unexpected symbol entry size {}", entry.value);
+            }
             break;
         case elf::dynRelr:
         case elf::dynRelrSize:

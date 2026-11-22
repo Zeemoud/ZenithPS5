@@ -236,3 +236,48 @@ TEST_F(GuestCallTest, ExitGuestLeavesTheCpuLayerUsable) {
 TEST(ExitGuestDeathTest, OutsideOfAGuestCallIsFatal) {
     EXPECT_DEATH(cpu::exitGuest(1), "outside of a guest call");
 }
+
+namespace {
+
+u64 hostFirstArgument(u64 a, u64, u64, u64, u64, u64) noexcept {
+    return a;
+}
+
+u64 hostSecondArgument(u64, u64 b, u64, u64, u64, u64) noexcept {
+    return b;
+}
+
+} // namespace
+
+TEST_F(GuestCallTest, AStubWithAnIdReplacesTheFirstArgumentOnly) {
+    auto stubs = cpu::StubTable::create(space, stubBase, 8, cpu::StubTable::idStubSize);
+    ASSERT_TRUE(stubs.ok());
+    const auto first = stubs.value().addWithId(hostFirstArgument, 7);
+    const auto second = stubs.value().addWithId(hostSecondArgument, 7);
+    ASSERT_TRUE(first.ok()) << first.error();
+    ASSERT_TRUE(second.ok());
+    auto stack = cpu::GuestStack::create(space, stackBase, stackSize, "stack");
+    ASSERT_TRUE(stack.ok());
+
+    const auto id = cpu::callGuest(first.value(), stack.value(), {99, 55});
+    const auto other = cpu::callGuest(second.value(), stack.value(), {99, 55});
+
+    ASSERT_TRUE(id.ok());
+    ASSERT_TRUE(other.ok());
+    EXPECT_EQ(id.value(), 7U);     // the id, not the guest's 99
+    EXPECT_EQ(other.value(), 55U); // the other arguments are untouched
+}
+
+TEST_F(GuestCallTest, StubsWithDifferentIdsAreDistinguishable) {
+    auto stubs = cpu::StubTable::create(space, stubBase, 8, cpu::StubTable::idStubSize);
+    ASSERT_TRUE(stubs.ok());
+    const auto a = stubs.value().addWithId(hostFirstArgument, 11);
+    const auto b = stubs.value().addWithId(hostFirstArgument, 22);
+    ASSERT_TRUE(a.ok());
+    ASSERT_TRUE(b.ok());
+    auto stack = cpu::GuestStack::create(space, stackBase, stackSize, "stack");
+    ASSERT_TRUE(stack.ok());
+
+    EXPECT_EQ(cpu::callGuest(a.value(), stack.value()).value(), 11U);
+    EXPECT_EQ(cpu::callGuest(b.value(), stack.value()).value(), 22U);
+}

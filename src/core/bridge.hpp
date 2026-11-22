@@ -3,10 +3,12 @@
 
 #include "common/result.hpp"
 #include "common/types.hpp"
+#include "core/imports.hpp"
 #include "cpu/stub_table.hpp"
 #include "memory/address_space.hpp"
 
 #include <functional>
+#include <string>
 #include <string_view>
 
 namespace zenith::core {
@@ -47,8 +49,13 @@ using OutputSink = std::function<void(int fd, std::string_view text)>;
 // the run, per thread.
 struct RunContext {
     memory::AddressSpace* space = nullptr;
-    OutputSink output; // empty: write to the host's stdout/stderr
+    ImportTable* imports = nullptr;
+    OutputSink output;   // empty: write to the host's stdout/stderr
+    std::string failure; // set by a host function that ends the program because of an error
 };
+
+// The context of the run in progress on this thread, or nullptr.
+RunContext* currentRunContext();
 
 class ScopedRunContext {
 public:
@@ -61,6 +68,12 @@ public:
 private:
     RunContext* previous_;
 };
+
+// The test library, "libzenithtest.so": the same two services as the bridge, but as named imports.
+//   u64 zenith_write(u64 fd, const char* data, u64 length)   // see BridgeFunction::Write
+//   [[noreturn]] void zenith_exit(u64 code)                  // see BridgeFunction::Exit
+inline constexpr std::string_view testLibraryName = "libzenithtest.so";
+void registerTestLibrary(ImportTable& imports);
 
 // Maps the bridge stubs at their fixed addresses. The returned table must stay alive while guest code runs.
 [[nodiscard]] Result<cpu::StubTable> installBridge(memory::AddressSpace& space);

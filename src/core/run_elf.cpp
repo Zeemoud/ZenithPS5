@@ -31,7 +31,18 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
         return makeError("{}: {}", name, bridge.error());
     }
 
-    const auto image = loader::loadElf(elf.value(), data, space, name, {.baseAddress = options.imageBase});
+    auto imports = ImportTable::create(space);
+    if (!imports.ok()) {
+        return makeError("{}: {}", name, imports.error());
+    }
+    registerTestLibrary(imports.value());
+
+    loader::LoadOptions loadOptions;
+    loadOptions.baseAddress = options.imageBase;
+    loadOptions.hasLibrary = [&imports](std::string_view library) { return imports.value().hasLibrary(library); };
+    loadOptions.resolveSymbol = [&imports](std::string_view symbol) { return imports.value().resolve(symbol); };
+
+    const auto image = loader::loadElf(elf.value(), data, space, name, loadOptions);
     if (!image.ok()) {
         return makeError("{}", image.error());
     }
@@ -43,11 +54,16 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
 
     RunContext context;
     context.space = &space;
+    context.imports = &imports.value();
     context.output = options.output;
     const ScopedRunContext scope(context);
 
     ZENITH_LOG_INFO(Core, "running '{}' from {:#x}", name, image.value().entry);
-    return cpu::callGuest(image.value().entry, stack.value());
+    const auto result = cpu::callGuest(image.value().entry, stack.value());
+    if (!context.failure.empty()) {
+        return makeError("{}: {}", name, context.failure);
+    }
+    return result;
 }
 
 } // namespace zenith::core

@@ -4,6 +4,7 @@
 #include "common/result.hpp"
 #include "common/types.hpp"
 #include "core/bridge.hpp"
+#include "core/library_source.hpp"
 
 #include <span>
 #include <string_view>
@@ -13,6 +14,7 @@ namespace zenith::core {
 struct RunOptions {
     u64 stackSize = 1 * MiB;        // size of the main guest stack, guard area included
     GuestAddr imageBase = 0x400000; // where a position-independent program (ET_DYN) is loaded
+    LibrarySource libraries;        // finds the libraries the host does not provide; empty: there are none
     OutputSink output;              // where the guest's output goes; empty means the host's stdout/stderr
 };
 

@@ -29,7 +29,11 @@ The presets are `debug`, `release` and `asan` (Debug with AddressSanitizer and U
 ```bash
 ./build/debug/bin/zenith build/debug/tests/homebrew/hello.elf
 ./build/debug/bin/zenith --log-level=debug program.elf
+./build/debug/bin/zenith -L path/to/libraries program.elf
 ```
+
+The shared libraries a program needs, and the host does not provide, are looked up as files: first in the
+directories given with `-L` (repeatable), then in the program's own directory.
 
 Log levels: `trace`, `debug`, `info` (default), `warn`, `error`, `off`. The logs go to stderr, the program's own
 output to stdout. If the program crashes, `zenith` prints a report (reason, fault address, registers, the guest
@@ -71,4 +75,5 @@ zenith_add_homebrew(hello_pie "Hello from a relocated guest!" PIE)
 ```
 
 with the regular expression the output must match, and one of the options `PIE` (position-independent),
-`IMPORTS` (linked against the test library, so it has real imports) or `EXPECT_CRASH`.
+`IMPORTS` (linked against the test library, so it has real imports), `LIBRARIES <lib>...` (linked against guest
+libraries declared with `zenith_add_guest_library`, which `zenith` finds next to the program) or `EXPECT_CRASH`.

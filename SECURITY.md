@@ -19,6 +19,8 @@ and your system. Examples of what we want to know about:
 
 - a crafted ELF file that makes the loader read or write outside its buffers,
 - an HLE function that trusts a guest pointer or size it should have checked,
+- a program that makes the host read a file that is not a library (library names come from the program, and
+  only plain file names are looked up, in the library directories),
 - anything that lets a guest program affect the emulator's memory in a way that is not already possible by
   design.
 

@@ -30,12 +30,13 @@ and every address must be below 2^47.
 
 | Tag | Support |
 |---|---|
-| `DT_NEEDED` | The library must be provided by the host (see [HLE](../hle/README.md)), else the program is refused |
+| `DT_NEEDED` | The library is provided by the host (see [HLE](../hle/README.md)) or is a file found in the library directories (see [Shared libraries](#shared-libraries)); else the program is refused |
 | `DT_SYMTAB`, `DT_STRTAB`, `DT_STRSZ`, `DT_SYMENT` | Read (`DT_SYMENT` must be 24) |
 | `DT_RELA`, `DT_RELASZ`, `DT_RELAENT` | Read (`DT_RELAENT` must be 24) |
 | `DT_JMPREL`, `DT_PLTRELSZ` | Read: the PLT relocations, bound at load time |
 | `DT_RELR`, `DT_RELRSZ` | Detected, refused (compact relocations are not supported) |
-| `DT_INIT`, `DT_INIT_ARRAY`... | Ignored: only the entry point runs, constructors do not |
+| `DT_GNU_HASH`, `DT_HASH` | Read to count the symbols a library exports |
+| `DT_INIT`, `DT_INIT_ARRAY`... | Ignored: only the entry point of the program runs; constructors of the program and of its libraries do not |
 | Others | Ignored |
 
 ## Relocations
@@ -52,6 +53,21 @@ and every address must be below 2^47.
 A symbol defined by the program itself resolves to its own address. An imported symbol is resolved by name
 through the host ([ADR 0003](../adr/0003-imports-bound-through-stubs.md)). An unresolved *weak* import
 becomes 0.
+
+## Shared libraries
+
+A library a program needs is loaded from its file unless the host provides it. It must be `ET_DYN`. ZenithPS5 maps
+it after the modules already loaded, and loads the libraries it needs in turn, once each.
+
+Every module can use the symbols the others **export**: defined, global or weak, with default or protected
+visibility (not hidden), functions and data (not sections, files or thread-local variables). The number of
+symbols comes from the hash table: `DT_GNU_HASH` (walking the chains to the last symbol) or `DT_HASH`. A library
+that has symbols but neither table is refused.
+
+A symbol is looked up in the modules in load order (the program first), then in the host libraries, and
+otherwise becomes an unimplemented stub ([ADR 0003](../adr/0003-imports-bound-through-stubs.md),
+[ADR 0004](../adr/0004-programs-and-libraries-loaded-together.md)). Only the program's entry point has to be in an
+executable segment: linkers leave the entry point of a library meaningless.
 
 ## Not covered here
 

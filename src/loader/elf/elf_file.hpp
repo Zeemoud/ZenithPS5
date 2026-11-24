@@ -20,6 +20,8 @@ struct DynamicInfo {
     u64 symtab = 0;                    // DT_SYMTAB: table of symbols (Elf64_Sym)
     u64 strtab = 0;                    // DT_STRTAB: string table
     u64 strSize = 0;                   // DT_STRSZ
+    u64 hash = 0;                      // DT_HASH: classic hash table (its chain count is the number of symbols)
+    u64 gnuHash = 0;                   // DT_GNU_HASH: the hash table linkers produce by default
     std::vector<u64> needed;           // DT_NEEDED: offsets, in the string table, of the library names
     bool hasPackedRelocations = false; // DT_RELR: compact relocation format
 };

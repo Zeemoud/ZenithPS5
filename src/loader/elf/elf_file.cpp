@@ -50,6 +50,12 @@ Result<DynamicInfo> parseDynamic(std::span<const u8> data, const elf::ProgramHea
         case elf::dynNeeded:
             info.needed.push_back(entry.value);
             break;
+        case elf::dynHash:
+            info.hash = entry.value;
+            break;
+        case elf::dynGnuHash:
+            info.gnuHash = entry.value;
+            break;
         case elf::dynSymtab:
             info.symtab = entry.value;
             break;

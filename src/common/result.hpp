@@ -57,4 +57,12 @@ private:
     std::variant<T, Error> data_;
 };
 
+// For operations that succeed or fail without producing a value.
+struct Unit {};
+using Status = Result<Unit>;
+
+inline Status success() {
+    return Unit{};
+}
+
 } // namespace zenith

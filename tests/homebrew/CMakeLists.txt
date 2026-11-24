@@ -27,19 +27,52 @@ add_custom_command(
   VERBATIM)
 add_custom_target(homebrew_libzenithtest ALL DEPENDS "${ZENITH_TEST_LIBRARY}")
 
-# zenith_add_homebrew(<name> <expected output regex> [PIE] [IMPORTS] [EXPECT_CRASH])
+# zenith_add_guest_library(<name> [IMPORTS])
+# Builds <name>.so from <name>/<name>.S, a real shared library that ZenithPS5 loads from its file. With IMPORTS it
+# is linked against the stand-in for libzenithtest.so, so its own imports have real names.
+function(zenith_add_guest_library name)
+  cmake_parse_arguments(ARG "IMPORTS" "" "" ${ARGN})
+
+  set(source "${CMAKE_CURRENT_SOURCE_DIR}/${name}/${name}.S")
+  set(library "${CMAKE_CURRENT_BINARY_DIR}/${name}.so")
+  set(inputs "${source}")
+  set(depends "${source}")
+  if(ARG_IMPORTS)
+    list(APPEND inputs "${ZENITH_TEST_LIBRARY}")
+    list(APPEND depends "${ZENITH_TEST_LIBRARY}")
+  endif()
+
+  add_custom_command(
+    OUTPUT "${library}"
+    COMMAND "${CMAKE_C_COMPILER}" ${ZENITH_GUEST_COMMON_FLAGS} -shared -Wl,--hash-style=gnu
+            -Wl,-soname,${name}.so -o "${library}" ${inputs}
+    DEPENDS ${depends}
+    COMMENT "Building guest library ${name}"
+    VERBATIM)
+  add_custom_target(homebrew_${name} ALL DEPENDS "${library}")
+endfunction()
+
+# zenith_add_homebrew(<name> <expected output regex> [PIE] [IMPORTS] [EXPECT_CRASH] [LIBRARIES <lib>...])
+# LIBRARIES lists guest libraries (see above) the program is linked against; ZenithPS5 finds them next to it.
 function(zenith_add_homebrew name expected_output)
-  cmake_parse_arguments(ARG "PIE;IMPORTS;EXPECT_CRASH" "" "" ${ARGN})
+  cmake_parse_arguments(ARG "PIE;IMPORTS;EXPECT_CRASH" "" "LIBRARIES" ${ARGN})
 
   set(source "${CMAKE_CURRENT_SOURCE_DIR}/${name}/${name}.S")
   set(elf "${CMAKE_CURRENT_BINARY_DIR}/${name}.elf")
 
   set(inputs "${source}")
   set(depends "${source}")
+  foreach(library IN LISTS ARG_LIBRARIES)
+    list(APPEND inputs "${CMAKE_CURRENT_BINARY_DIR}/${library}.so")
+    list(APPEND depends "${CMAKE_CURRENT_BINARY_DIR}/${library}.so")
+  endforeach()
   if(ARG_IMPORTS)
-    set(link_flags ${ZENITH_GUEST_IMPORT_FLAGS})
     list(APPEND inputs "${ZENITH_TEST_LIBRARY}")
     list(APPEND depends "${ZENITH_TEST_LIBRARY}")
+  endif()
+
+  if(ARG_IMPORTS OR ARG_LIBRARIES)
+    set(link_flags ${ZENITH_GUEST_IMPORT_FLAGS})
   elseif(ARG_PIE)
     set(link_flags ${ZENITH_GUEST_PIE_FLAGS})
   else()
@@ -63,6 +96,9 @@ function(zenith_add_homebrew name expected_output)
   set_tests_properties(homebrew.${name} PROPERTIES PASS_REGULAR_EXPRESSION "${expected_output}")
 endfunction()
 
+zenith_add_guest_library(libzenithmath)
+zenith_add_guest_library(libzenithgreet IMPORTS)
+
 zenith_add_homebrew(return42 "guest returned 42")
 zenith_add_homebrew(data_bss "guest returned 42")
 zenith_add_homebrew(hello "Hello from the guest!")
@@ -70,4 +106,6 @@ zenith_add_homebrew(hello_pie "Hello from a relocated guest!" PIE)
 zenith_add_homebrew(hello_import "Hello through a named import!" IMPORTS)
 zenith_add_homebrew(hello_import_got "Hello through a GOT import!" IMPORTS)
 zenith_add_homebrew(import_missing "unimplemented function 'zenith_unimplemented_demo'" IMPORTS)
+zenith_add_homebrew(call_library "guest returned 42" IMPORTS LIBRARIES libzenithmath)
+zenith_add_homebrew(hello_library "Hello from a library!" IMPORTS LIBRARIES libzenithgreet)
 zenith_add_homebrew(crash_null "null pointer dereference" EXPECT_CRASH)

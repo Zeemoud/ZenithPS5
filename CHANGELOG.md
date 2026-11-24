@@ -16,10 +16,14 @@ the project will use [Semantic Versioning](https://semver.org/) once it makes re
   loading fails.
 - **Imports**: symbols bound by name through host libraries, an `ImportTable` with stubs, and a stub for
   unimplemented functions that stops the program and names the missing function.
+- **Shared libraries**: a program can need libraries that are real ELF files, found in the library directories
+  (`-L`, then the program's directory). They are loaded recursively and once each, every module is relocated
+  against one global scope (first exporter wins, then host libraries, then unimplemented stubs), and the exported
+  symbols are read from `DT_GNU_HASH` or `DT_HASH`. A failure unmaps everything.
 - **Running guest code**: a guest stack with a guard area, calling guest code natively (System V ABI), host
   functions callable from the guest, `exitGuest`, and a crash handler that prints a readable report (reason,
   fault address, registers, guest call).
-- **Command line**: `zenith [--log-level <level>] <program.elf>`.
+- **Command line**: `zenith [--log-level <level>] [-L <dir>]... <program.elf>`.
 - **Tests**: unit tests per module, small assembly guest programs built by every build and run through the
   CLI, and CLI behavior tests.
 - **Documentation**: architecture overview, three ADRs, ELF support, HLE guide and status, developer guides,

@@ -16,7 +16,7 @@ See [ADR 0001](../adr/0001-hle-instead-of-static-recompilation.md).
 | memory | `src/memory` | `AddressSpace`: the guest's memory map, identity-mapped on the host |
 | loader | `src/loader` | ELF parsing and loading: segments, relocations, imports by name |
 | cpu | `src/cpu` | Guest stack, calling guest code, host-function stubs, crash handler |
-| core | `src/core` | Running a program: the test bridge, `ImportTable`, `runElf` |
+| core | `src/core` | Running a program: loading it with its libraries, the test bridge, `ImportTable`, `runElf` |
 | frontend | `src/frontend/cli` | The `zenith` command |
 
 A module only depends on the modules it is built on, never the other way (the arrows show the dependencies,
@@ -42,8 +42,10 @@ system.
 2. `ElfFile::parse` validates the headers, the segments and the dynamic section.
 3. `runElf` creates an `AddressSpace` and installs two things in it: the test bridge (fixed addresses) and the
    `ImportTable` (stubs for imports).
-4. `loadElf` maps the segments (at the base address chosen for position-independent programs), applies the
-   relocations and binds every import by name through the `ImportTable`.
+4. `loadProgram` maps the program (at the base address chosen for position-independent programs), then every
+   shared library it needs that the host does not provide: found as a file, parsed, mapped after the modules
+   already loaded. It then relocates every module against one global scope and binds the remaining imports by
+   name through the `ImportTable` ([ADR 0004](../adr/0004-programs-and-libraries-loaded-together.md)).
 5. A `GuestStack` is mapped and `callGuest` jumps to the entry point on that stack.
 6. The program runs natively. When it calls an import, the stub jumps to a host function. When it returns or
    calls `exit`, `runElf` returns its result.
@@ -58,6 +60,7 @@ mapped in whole *guest pages* of 16 KiB.
 | `0x100000` | Test bridge stubs | Fixed contract, see `src/core/bridge.hpp` |
 | `0x200000` | Import stubs | 32 bytes per stub, 512 stubs |
 | `0x400000` | Default base of position-independent programs | Configurable; fixed-address programs go where they were linked |
+| after the program | Shared libraries | One after the other in load order, each starting on a 64 KiB boundary |
 | `0x3000'0000'0000` | Main guest stack | 1 MiB, the lowest 16 KiB is an inaccessible guard area |
 
 A mapping that collides with something the host already uses is refused, never replaced.

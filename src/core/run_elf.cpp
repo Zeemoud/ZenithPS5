@@ -2,10 +2,10 @@
 #include "core/run_elf.hpp"
 
 #include "common/log.hpp"
+#include "core/program.hpp"
 #include "cpu/guest_call.hpp"
 #include "cpu/guest_stack.hpp"
 #include "loader/elf/elf_file.hpp"
-#include "loader/elf/elf_loader.hpp"
 #include "memory/address_space.hpp"
 
 namespace zenith::core {
@@ -37,14 +37,13 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
     }
     registerTestLibrary(imports.value());
 
-    loader::LoadOptions loadOptions;
-    loadOptions.baseAddress = options.imageBase;
-    loadOptions.hasLibrary = [&imports](std::string_view library) { return imports.value().hasLibrary(library); };
-    loadOptions.resolveSymbol = [&imports](std::string_view symbol) { return imports.value().resolve(symbol); };
+    ProgramOptions programOptions;
+    programOptions.imageBase = options.imageBase;
+    programOptions.libraries = options.libraries;
 
-    const auto image = loader::loadElf(elf.value(), data, space, name, loadOptions);
-    if (!image.ok()) {
-        return makeError("{}", image.error());
+    const auto program = loadProgram(elf.value(), data, space, imports.value(), name, programOptions);
+    if (!program.ok()) {
+        return makeError("{}", program.error());
     }
 
     const auto stack = cpu::GuestStack::create(space, mainStackBase, options.stackSize, "main stack");
@@ -58,8 +57,8 @@ Result<u64> runElf(std::span<const u8> data, std::string_view name, const RunOpt
     context.output = options.output;
     const ScopedRunContext scope(context);
 
-    ZENITH_LOG_INFO(Core, "running '{}' from {:#x}", name, image.value().entry);
-    const auto result = cpu::callGuest(image.value().entry, stack.value());
+    ZENITH_LOG_INFO(Core, "running '{}' from {:#x}", name, program.value().entry());
+    const auto result = cpu::callGuest(program.value().entry(), stack.value());
     if (!context.failure.empty()) {
         return makeError("{}: {}", name, context.failure);
     }

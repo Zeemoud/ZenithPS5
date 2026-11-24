@@ -5,7 +5,10 @@ how it works and how to add a function. [`status.md`](status.md) lists what exis
 
 ## Concepts
 
-- A **library** has a name (the `DT_NEEDED` entry programs are linked against, for example `libkernel.so`).
+- A **library** has a name (the `DT_NEEDED` entry programs are linked against, for example `libkernel.so`). The
+  host can provide it, as functions registered here. A library the host does not provide is loaded from its file
+  like the program itself ([ADR 0004](../adr/0004-programs-and-libraries-loaded-together.md)); the host
+  libraries take precedence when a name is both.
 - A **function** is a C++ function registered under a **symbol name**. Lookup is global, as in ELF: a symbol is
   found whichever library it was registered under.
 - The `ImportTable` (`src/core/imports.hpp`) holds both. When a program is loaded, each import it uses gets a

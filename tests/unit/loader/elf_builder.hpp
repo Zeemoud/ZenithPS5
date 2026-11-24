@@ -32,7 +32,12 @@ struct SymbolSpec {
     bool defined = false; // false: an import
     u64 value = 0;        // link-time address, for a defined symbol
     bool weak = false;
+    bool local = false;  // local binding: never exported
+    bool hidden = false; // hidden visibility: never exported
 };
+
+// The hash table written in the dynamic segment: it tells the loader how many symbols there are.
+enum class HashStyle { Sysv, Gnu, None };
 
 // Builds tiny synthetic ELF64 x86-64 files, so tests need no real binary.
 class ElfBuilder {
@@ -66,6 +71,11 @@ public:
     // Symbols (index 1, 2, ... in the symbol table) and DT_NEEDED libraries, stored in the dynamic segment.
     ElfBuilder& symbols(std::vector<SymbolSpec> specs) {
         symbols_ = std::move(specs);
+        return *this;
+    }
+
+    ElfBuilder& hashStyle(HashStyle style) {
+        hashStyle_ = style;
         return *this;
     }
 
@@ -136,19 +146,46 @@ public:
             for (const SymbolSpec& symbol : symbols_) {
                 Sym entry{};
                 entry.name = addString(symbol.name);
-                entry.info = static_cast<u8>(((symbol.weak ? bindWeak : 1) << 4) | 2); // FUNC
+                const u8 binding = symbol.local ? 0 : (symbol.weak ? bindWeak : bindGlobal);
+                entry.info = static_cast<u8>((binding << 4) | 2); // FUNC
+                entry.other = symbol.hidden ? visibilityHidden : 0;
                 entry.shndx = symbol.defined ? 1 : shnUndef;
                 entry.value = symbol.value;
                 symtab.push_back(entry);
             }
             const bool hasSymbols = !symbols_.empty() || !needed_.empty();
 
+            // Hash table (only the symbol count matters to the loader: lookups scan the symbol table).
+            std::vector<u32> hashWords;
+            const u32 symbolTotal = static_cast<u32>(symtab.size());
+            if (hashStyle_ == HashStyle::Sysv) {
+                hashWords = {1, symbolTotal, 0};                  // nbucket, nchain, bucket[0]
+                hashWords.resize(hashWords.size() + symbolTotal); // chain[nchain]
+            } else if (hashStyle_ == HashStyle::Gnu) {
+                const u32 hashed = symbolTotal - 1; // every symbol after the null one
+                hashWords = {1,
+                             1,
+                             1,
+                             6,
+                             0xFFFFFFFFU,
+                             0xFFFFFFFFU,                    // nbuckets, symoffset, bloom_size, shift, bloom[0]
+                             hashed > 0 ? 1U : 0U};          // bucket[0]
+                hashWords.resize(hashWords.size() + hashed); // chains
+                if (hashed > 0) {
+                    hashWords.back() |= 1U; // end of the chain
+                }
+            }
+            const bool hasHash = hasSymbols && hashStyle_ != HashStyle::None;
+
             // Layout of the segment: dynamic section, relocation table, symbol table, string table.
-            const u64 tagCount = 3 + (hasSymbols ? 4 : 0) + neededOffsets.size() + extraTags_.size() + 1;
+            const u64 symbolTagCount = hasSymbols ? 4U : 0U;
+            const u64 hashTagCount = hasHash ? 1U : 0U;
+            const u64 tagCount = 3U + symbolTagCount + hashTagCount + neededOffsets.size() + extraTags_.size() + 1U;
             const u64 dynamicSize = tagCount * sizeof(Dyn);
             const u64 relaVaddr = dynamicVaddr_ + dynamicSize;
             const u64 symtabVaddr = relaVaddr + relocations_.size() * sizeof(Rela);
             const u64 strtabVaddr = symtabVaddr + symtab.size() * sizeof(Sym);
+            const u64 hashVaddr = (strtabVaddr + strtab.size() + 7) / 8 * 8;
 
             std::vector<Dyn> entries;
             entries.push_back({dynRela, relaVaddr});
@@ -160,6 +197,9 @@ public:
                 entries.push_back({dynStrSize, strtab.size()});
                 entries.push_back({dynSymEntry, sizeof(Sym)});
             }
+            if (hasHash) {
+                entries.push_back({hashStyle_ == HashStyle::Sysv ? dynHash : dynGnuHash, hashVaddr});
+            }
             for (const u32 offset : neededOffsets) {
                 entries.push_back({dynNeeded, offset});
             }
@@ -168,8 +208,8 @@ public:
             }
             entries.push_back({dynNull, 0});
 
-            std::vector<u8> bytes(dynamicSize + relocations_.size() * sizeof(Rela) + symtab.size() * sizeof(Sym) +
-                                  strtab.size());
+            const u64 hashBytes = hasHash ? hashWords.size() * sizeof(u32) : 0;
+            std::vector<u8> bytes(hashVaddr - dynamicVaddr_ + hashBytes);
             std::memcpy(bytes.data(), entries.data(), dynamicSize);
             for (usize i = 0; i < relocations_.size(); ++i) {
                 const Rela rela{relocations_[i].offset,
@@ -179,6 +219,9 @@ public:
             }
             std::memcpy(bytes.data() + (symtabVaddr - dynamicVaddr_), symtab.data(), symtab.size() * sizeof(Sym));
             std::memcpy(bytes.data() + (strtabVaddr - dynamicVaddr_), strtab.data(), strtab.size());
+            if (hasHash) {
+                std::memcpy(bytes.data() + (hashVaddr - dynamicVaddr_), hashWords.data(), hashBytes);
+            }
 
             // The LOAD segment that holds the section, then the PT_DYNAMIC header pointing into it.
             const u64 offset = dataStart + payload.size();
@@ -216,6 +259,7 @@ private:
     std::vector<std::pair<i64, u64>> extraTags_;
     std::vector<SymbolSpec> symbols_;
     std::vector<std::string> needed_;
+    HashStyle hashStyle_ = HashStyle::Sysv;
 };
 
 } // namespace zenith::test

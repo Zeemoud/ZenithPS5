@@ -233,3 +233,45 @@ TEST_F(RunElfTest, RefusesAProgramThatNeedsAnUnknownLibrary) {
     ASSERT_FALSE(result.ok());
     EXPECT_NE(result.error().find("libmissing.so"), std::string::npos);
 }
+
+namespace {
+
+// libanswer.so: exports lib_answer, which returns 42.
+std::vector<u8> answerLibrary() {
+    return ElfBuilder{}
+        .type(loader::elf::typeSharedObject)
+        .entry(0)
+        .segment({.vaddr = 0, .bytes = {0xB8, 0x2A, 0x00, 0x00, 0x00, 0xC3}}) // mov eax, 42 ; ret
+        .dynamic(0x20000, {})
+        .symbols({{.name = "lib_answer", .defined = true, .value = 0}})
+        .build();
+}
+
+} // namespace
+
+TEST_F(RunElfTest, RunsAProgramThatUsesASharedLibrary) {
+    // The program imports lib_answer through a GOT slot and returns what it returns.
+    const auto bytes = importingProgram({}, 4, "lib_answer", "libanswer.so");
+    core::RunOptions options;
+    options.libraries = [](std::string_view name) -> Result<std::vector<u8>> {
+        if (name != "libanswer.so") {
+            return makeError("no such file");
+        }
+        return answerLibrary();
+    };
+
+    const auto result = core::runElf(bytes, "program.elf", options);
+
+    ASSERT_TRUE(result.ok()) << result.error();
+    EXPECT_EQ(result.value(), 42U);
+}
+
+TEST_F(RunElfTest, RefusesAProgramWhoseLibraryCannotBeFound) {
+    const auto bytes = importingProgram({}, 4, "lib_answer", "libanswer.so");
+
+    const auto result = core::runElf(bytes, "program.elf"); // no library source
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_NE(result.error().find("libanswer.so"), std::string::npos);
+    EXPECT_NE(result.error().find("not provided"), std::string::npos);
+}

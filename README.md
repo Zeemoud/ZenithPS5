@@ -5,7 +5,7 @@ An open-source PlayStation 5 emulator written in C++20, built around **high-leve
 The name is a nod to Zen 2, the x86-64 CPU architecture of the PS5: guest code runs natively on the host, and the real work lies in re-implementing the system layer, the GPU command stream and the shaders.
 
 > **Status: pre-alpha.** ZenithPS5 can load and run small freestanding x86-64 programs (fixed-address or
-> position-independent ELF files), bind their imports to host functions, and report crashes readably. It
+> position-independent ELF files), load the shared libraries they need, bind their imports to host functions, and report crashes readably. It
 > cannot run PS5 software yet: PS5 executable formats, the system libraries and the GPU are not implemented.
 
 ## Goals
@@ -22,8 +22,8 @@ ZenithPS5 loads the original executable at runtime and provides the system libra
 ## Roadmap
 
 1. **Foundation**: common types, logging, assertions, build and CI. *Done.*
-2. **Loader**: ELF parsing, segment mapping, relocations, imports by name. *Done for standard ELF files.*
-   Next: several modules that call each other, then PS5 module formats and NID resolution.
+2. **Loader**: ELF parsing, segment mapping, relocations, imports by name, shared libraries. *Done for
+   standard ELF files.* Next: PS5 module formats and NID resolution.
 3. **Memory and CPU**: guest address space, native execution of guest code, HLE call stubs, crash reports.
    *Done.* Next: thread-local storage and threads.
 4. **Kernel HLE**: threads, synchronization, memory, time, filesystem. *Not started.*

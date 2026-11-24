@@ -34,6 +34,7 @@ inline constexpr u32 segmentDynamic = 2; // PT_DYNAMIC
 inline constexpr i64 dynNull = 0;
 inline constexpr i64 dynNeeded = 1;
 inline constexpr i64 dynPltRelSize = 2;
+inline constexpr i64 dynHash = 4;
 inline constexpr i64 dynStrtab = 5;
 inline constexpr i64 dynSymtab = 6;
 inline constexpr i64 dynRela = 7;
@@ -44,6 +45,7 @@ inline constexpr i64 dynSymEntry = 11;
 inline constexpr i64 dynJmpRel = 23;
 inline constexpr i64 dynRelrSize = 35;
 inline constexpr i64 dynRelr = 36;
+inline constexpr i64 dynGnuHash = 0x6ffffef5;
 
 // Relocation types (x86-64).
 inline constexpr u32 relocNone = 0;     // R_X86_64_NONE
@@ -52,8 +54,19 @@ inline constexpr u32 relocGlobDat = 6;  // R_X86_64_GLOB_DAT: S (a GOT entry)
 inline constexpr u32 relocJumpSlot = 7; // R_X86_64_JUMP_SLOT: S (a PLT entry)
 inline constexpr u32 relocRelative = 8; // R_X86_64_RELATIVE: B + A
 
-inline constexpr u16 shnUndef = 0; // symbol defined elsewhere: an import
-inline constexpr u8 bindWeak = 2;  // STB_WEAK, in the high nibble of Sym::info
+inline constexpr u16 shnUndef = 0;    // symbol defined elsewhere: an import
+inline constexpr u16 shnAbs = 0xFFF1; // symbol with an absolute value, not relative to the load base
+inline constexpr u8 bindGlobal = 1;
+inline constexpr u8 bindWeak = 2; // STB_WEAK; the binding is the high nibble of Sym::info
+
+// Symbol types (the low nibble of Sym::info) that are not code or data a program can use.
+inline constexpr u8 symbolTypeSection = 3;
+inline constexpr u8 symbolTypeFile = 4;
+inline constexpr u8 symbolTypeTls = 6;
+
+// Visibility, the low bits of Sym::other.
+inline constexpr u8 visibilityInternal = 1;
+inline constexpr u8 visibilityHidden = 2;
 
 inline constexpr u32 flagExecute = 1;
 inline constexpr u32 flagWrite = 2;
